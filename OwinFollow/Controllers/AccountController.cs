@@ -155,76 +155,133 @@ namespace OwinFollow.Controllers
         {
             if (ModelState.IsValid)
             {
-                var user = new ApplicationUser { UserName = model.UserName, Email = model.Email , Address = model.Address, DateOfBirth = model.DateOfBirth, Password = model.Password };
+                var user = new ApplicationUser { UserName = model.UserName, Email = model.Email, Address = model.Address, DateOfBirth = model.DateOfBirth, Password = model.Password };
+                user.EmailConfirmed = false;
                 var result = await UserManager.CreateAsync(user, model.Password);
                 if (result.Succeeded)
                 {
-                    await SignInManager.SignInAsync(user, isPersistent:false, rememberBrowser:false);
+                    MailMessage m = new MailMessage(
+                    new MailAddress("jaynika@promactinfo.com", "priya mail"),
+                    new MailAddress(user.Email));
+                    m.Subject = "Confirmation Mail";
+                    m.Body = string.Format("Dear {0}<BR/>Thank you for your registration,Click to Confirm Email <a href=\"{1}\" title=\"User Email Confirm\">{1}</a>", user.UserName, Url.Action("ConfirmEmail", "Account", new { Token = user.Id, Email = user.Email }, Request.Url.Scheme));
+                    m.IsBodyHtml = true;
 
-                    int i = SendMail(model);
 
-                    return RedirectToAction("Index", "Home");
+                    SmtpClient smtp = new SmtpClient("webmail.promactinfo.com");
+                    smtp.ServicePoint.MaxIdleTime = 1;
+                    smtp.Credentials = new NetworkCredential("jaynika@promactinfo.com", "g6n_ArODfw9v4oWL");
+                    ServicePointManager.ServerCertificateValidationCallback = delegate (object s, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors)
+                    { return true; };
+                    smtp.EnableSsl = false;
+                    smtp.Send(m);
+                    return RedirectToAction("ConfirmEmailDemo", "Account");
                 }
-                AddErrors(result);
+                else
+                {
+                    AddErrors(result);
+                }
+
+                //    await SignInManager.SignInAsync(user, isPersistent: false, rememberBrowser: false);
+                //        return RedirectToAction("Index", "Home");
+                //    }
+                //    AddErrors(result);
             }
 
-            // If we got this far, something failed, redisplay form
+           
             return View(model);
         }
 
 
 
-
-        public int SendMail(RegisterViewModel users)
+        [AllowAnonymous]
+        public ActionResult ConfirmEmailDemo(string Email)
         {
-            if (ModelState.IsValid)
+            ViewBag.Email = Email;
+            return View();
+        }
+
+
+        //public int SendMail(RegisterViewModel users)
+        //{
+        //    if (ModelState.IsValid)
+        //    {
+        //        var user = new ApplicationUser() { UserName = users.UserName };
+        //        user.Email = users.Email;
+        //        user.EmailConfirmed = false;
+
+        //        MailMessage m = new MailMessage(
+        //        new MailAddress("jaynika@promactinfo.com", "priya mail"),
+        //        new MailAddress(user.Email));
+        //        m.Subject = "Confirmation Mail";
+        //        //m.Body = string.Format("Please confirm your account by clicking here");
+        //        //m.IsBodyHtml = false;
+
+        //        m.Body = string.Format("Thank you for your registration, please click on the below link to complete your registration: <a href=\"{0}\" title=\"Confirm your email ClickHere\">{0}</a>", Url.Action("ConfirmEmail", "Account", new { id = user.Id, email = user.Email }, Request.Url.Scheme));
+        //        m.IsBodyHtml = true;
+
+        //        //SmtpClient smtp = new SmtpClient();
+
+        //        SmtpClient smtp = new SmtpClient("webmail.promactinfo.com");
+        //       smtp.ServicePoint.MaxIdleTime = 1;
+        //        smtp.Credentials = new NetworkCredential("jaynika@promactinfo.com", "g6n_ArODfw9v4oWL");
+
+        //        //NetworkCredential Credential = new NetworkCredential(Convert.ToString(ConfigurationManager.AppSettings["UserName"]), Convert.ToString(ConfigurationManager.AppSettings["Password"]));
+        //        //smtp.UseDefaultCredentials = true;
+        //        //smtp.Credentials = Credential;
+        //        ServicePointManager.ServerCertificateValidationCallback = delegate (object s, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) { return true; };
+        //        smtp.EnableSsl = true;
+        //        smtp.Port = 25;
+
+        //        smtp.Send(m);
+        //    }
+        //    return 0;
+
+        //}
+
+
+        [AllowAnonymous]
+        public async Task<ActionResult> ConfirmEmail(string Token, string Email)
+        {
+            ApplicationUser user = this.UserManager.FindById(Token);
+            if (user != null)
             {
-                var user = new ApplicationUser() { UserName = users.UserName };
-                user.Email = users.Email;
-                user.EmailConfirmed = false;
-
-                MailMessage m = new MailMessage(
-                new MailAddress("jaynika@promactinfo.com", "priya mail"),
-                new MailAddress(user.Email));
-                m.Subject = "Confirmation Mail";
-                //m.Body = string.Format("Please confirm your account by clicking here");
-                //m.IsBodyHtml = false;
-
-                m.Body = string.Format("Thank you for your registration, please click on the below link to complete your registration: <a href=\"{0}\" title=\"Confirm your email ClickHere\">{0}</a>", Url.Action("ConfirmEmail", "Account", new { id = user.Id, email = user.Email }, Request.Url.Scheme));
-                m.IsBodyHtml = true;
-
-                //SmtpClient smtp = new SmtpClient();
-
-                SmtpClient smtp = new SmtpClient("webmail.promactinfo.com");
-                smtp.Credentials = new NetworkCredential("jaynika@promactinfo.com", "g6n_ArODfw9v4oWL");
-
-                //NetworkCredential Credential = new NetworkCredential(Convert.ToString(ConfigurationManager.AppSettings["UserName"]), Convert.ToString(ConfigurationManager.AppSettings["Password"]));
-                //smtp.UseDefaultCredentials = true;
-                //smtp.Credentials = Credential;
-                ServicePointManager.ServerCertificateValidationCallback = delegate (object s, X509Certificate certificate, X509Chain chain, SslPolicyErrors sslPolicyErrors) { return true; };
-                smtp.EnableSsl = true;
-                smtp.Port = 25;
-
-                smtp.Send(m);
+                if (user.Email == Email)
+                {
+                    user.EmailConfirmed = true;
+                    await UserManager.UpdateAsync(user);
+                    await SignInManager.SignInAsync(user, isPersistent: false, rememberBrowser: false);
+                    //await SignInAsync(user, isPersistent: false);
+                    return RedirectToAction("Login", "Account", new { ConfirmedEmail = user.Email });
+                }
+                else
+                {
+                    return RedirectToAction("ConfirmEmailDemo", "Account", new { Email = user.Email });
+                }
             }
-            return 0;
+            else
+            {
+                return RedirectToAction("ConfirmEmailDemo", "Account", new { Email = "" });
+            }
 
         }
+
+
 
 
 
         //
         // GET: /Account/ConfirmEmail
-        [AllowAnonymous]
-        public async Task<ActionResult> ConfirmEmail(string userId, string code)
-        {
-            if (userId == null || code == null)
-            {
-                return View("Error");
-            }
-            var result = await UserManager.ConfirmEmailAsync(userId, code);
-            return View(result.Succeeded ? "ConfirmEmail" : "Error");
-        }
+        //[AllowAnonymous]
+        //public async Task<ActionResult> ConfirmEmail(string userId, string code)
+        //{
+        //    if (userId == null || code == null)
+        //    {
+        //        return View("Error");
+        //    }
+        //    var result = await UserManager.ConfirmEmailAsync(userId, code);
+        //    return View(result.Succeeded ? "ConfirmEmail" : "Error");
+        //}
 
         //
         // GET: /Account/ForgotPassword
